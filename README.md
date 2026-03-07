@@ -2,8 +2,6 @@
 
 Monitor news topics, product prices, and custom events (store openings, restaurant launches, etc.) with AI-powered weekly email digests.
 
-
-
 ---
 
 ## What it does
