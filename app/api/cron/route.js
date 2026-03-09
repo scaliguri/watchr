@@ -1,6 +1,4 @@
 // app/api/cron/route.js
-// Called weekly by Vercel Cron — runs all trackers and sends digest email
-
 import { NextResponse } from "next/server";
 import { loadTrackers, saveTrackers } from "@/lib/trackers";
 import { runAllTrackers } from "@/lib/agent";
@@ -28,20 +26,29 @@ export async function GET(req) {
     return NextResponse.json({ error: "REPORT_EMAIL not set" }, { status: 500 });
   }
 
-  const raw = await loadTrackers();
-  const trackers = safeArray(raw);
+  const all = safeArray(await loadTrackers());
+  // Skip paused trackers
+  const active = all.filter(t => !t.paused);
 
-  if (trackers.length === 0) {
-    return NextResponse.json({ message: "No trackers configured" });
+  if (active.length === 0) {
+    return NextResponse.json({ message: "No active trackers" });
   }
 
-  const updatedTrackers = await runAllTrackers(trackers);
-  await saveTrackers(updatedTrackers);
-  await sendWeeklyDigest(updatedTrackers, recipientEmail);
+  const updated = await runAllTrackers(active);
+
+  // Merge updated results back with paused trackers unchanged
+  const merged = all.map(t => {
+    const u = updated.find(u => u.id === t.id);
+    return u || t;
+  });
+
+  await saveTrackers(merged);
+  await sendWeeklyDigest(updated, recipientEmail);
 
   return NextResponse.json({
     success: true,
-    trackersRun: updatedTrackers.length,
+    trackersRun: updated.length,
+    trackersPaused: all.length - active.length,
     sentTo: recipientEmail,
     timestamp: new Date().toISOString(),
   });
