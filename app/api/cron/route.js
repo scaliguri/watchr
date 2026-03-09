@@ -1,14 +1,23 @@
 // app/api/cron/route.js
-// This endpoint is called weekly by Vercel Cron (every Monday at 8am UTC)
-// It runs all trackers and sends a digest email
+// Called weekly by Vercel Cron — runs all trackers and sends digest email
 
 import { NextResponse } from "next/server";
 import { loadTrackers, saveTrackers } from "@/lib/trackers";
 import { runAllTrackers } from "@/lib/agent";
 import { sendWeeklyDigest } from "@/lib/email";
 
+function safeArray(data) {
+  if (Array.isArray(data)) return data;
+  if (typeof data === "string") {
+    try {
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {}
+  }
+  return [];
+}
+
 export async function GET(req) {
-  // Verify the request is from Vercel Cron or an authorized caller
   const authHeader = req.headers.get("authorization");
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -19,16 +28,15 @@ export async function GET(req) {
     return NextResponse.json({ error: "REPORT_EMAIL not set" }, { status: 500 });
   }
 
-  const trackers = loadTrackers();
+  const raw = await loadTrackers();
+  const trackers = safeArray(raw);
+
   if (trackers.length === 0) {
     return NextResponse.json({ message: "No trackers configured" });
   }
 
-  // Run all trackers through the AI agent
   const updatedTrackers = await runAllTrackers(trackers);
-  saveTrackers(updatedTrackers);
-
-  // Send the weekly digest
+  await saveTrackers(updatedTrackers);
   await sendWeeklyDigest(updatedTrackers, recipientEmail);
 
   return NextResponse.json({

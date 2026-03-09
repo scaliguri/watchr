@@ -1,10 +1,19 @@
 // app/api/send-email/route.js
-// Manually trigger a full digest email
-
 import { NextResponse } from "next/server";
 import { loadTrackers, saveTrackers } from "@/lib/trackers";
 import { runAllTrackers } from "@/lib/agent";
 import { sendWeeklyDigest } from "@/lib/email";
+
+function safeArray(data) {
+  if (Array.isArray(data)) return data;
+  if (typeof data === "string") {
+    try {
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {}
+  }
+  return [];
+}
 
 export async function POST(req) {
   const body = await req.json();
@@ -14,10 +23,10 @@ export async function POST(req) {
     return NextResponse.json({ error: "No email address provided" }, { status: 400 });
   }
 
-  const trackers = loadTrackers();
+  const raw = await loadTrackers();
+  const trackers = safeArray(raw);
   const updatedTrackers = await runAllTrackers(trackers);
-  saveTrackers(updatedTrackers);
-
+  await saveTrackers(updatedTrackers);
   await sendWeeklyDigest(updatedTrackers, recipientEmail);
 
   return NextResponse.json({ success: true, sentTo: recipientEmail });
